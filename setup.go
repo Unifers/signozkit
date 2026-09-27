@@ -84,6 +84,14 @@ func setup(ctx context.Context, cfg Config, stdout io.Writer) (*Telemetry, error
 
 	switch {
 	case cfg.Exporting():
+		// An export that fails after start reaches the global error handler,
+		// whose default writes bare lines to stderr that look nothing like the
+		// service's own logs. Routing it through the logger is the difference
+		// between "SigNoz is empty" and "the collector answered 403".
+		otel.SetErrorHandler(otel.ErrorHandlerFunc(func(err error) {
+			t.Logger.Error("telemetry export failed", "error", err)
+		}))
+
 		t.Logger.Info("exporting logs and traces", "endpoint", cfg.Endpoint, "environment", cfg.Environment)
 	case cfg.Endpoint != "":
 		t.Logger.Info("telemetry export is off", "environment", cfg.Environment, "enabled", cfg.Enabled)
