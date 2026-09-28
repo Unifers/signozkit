@@ -11,11 +11,18 @@ jobs:
     strategy:
       matrix:
         go: ["1.25", "stable"]
+        # The driver-specific packages are separate modules, so a service that
+        # only wants logs does not pull pgx, go-redis and the Mongo driver in
+        # with them. Each therefore builds and tests on its own.
+        module: [".", "pgx", "redis", "mongo"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ matrix.go }}
       - run: go vet ./...
+        working-directory: ${{ matrix.module }}
       - run: go test -race ./...
+        working-directory: ${{ matrix.module }}
       - run: go build -o /dev/null ./example
+        if: matrix.module == '.'

@@ -19,6 +19,17 @@
 //   - Records logged with a context that carries a span (slog.InfoContext and
 //     friends) are linked to that trace.
 //
+// Outbound work is instrumented where the client is built, so a trace does not
+// stop at the edge of the process:
+//
+//   - [Transport] for an http.Client;
+//   - [Producing] and [Consuming] for a queue, which carry the trace through a
+//     message and into the consumer that handles it.
+//
+// Databases live in their own modules, so a service that wants logs alone does
+// not pull a driver in with them: signozkit/pgx, signozkit/redis and
+// signozkit/mongo.
+//
 // Configuration comes from the standard OpenTelemetry environment variables
 // plus two switches; see [FromEnv].
 package signozkit

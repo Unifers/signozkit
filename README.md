@@ -77,6 +77,72 @@ defer span.End()
 
 They appear nested under the request in SigNoz's trace view.
 
+## Outbound calls
+
+A trace stops at the edge of the process unless the client carries it. Wrap the
+transport, and use a request that carries the calling context:
+
+```go
+client := &http.Client{Transport: signozkit.Transport(nil)}
+
+req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+res, err := client.Do(req)
+```
+
+Each call becomes a client span, and the service at the other end continues the
+same trace.
+
+## Queues
+
+A job published now and handled later is one trace, if the trace context travels
+with the message. Nothing here knows about any particular broker: a
+`map[string]string` is all the context needs, and converting it to the client's
+own header type is a few lines at the call site.
+
+```go
+// Publisher
+headers := map[string]string{}
+ctx, span := signozkit.Producing(ctx, "campaign.step", headers)
+defer span.End()
+
+// Consumer — use the returned ctx, that is what links the work to the publisher
+ctx, span := signozkit.Consuming(ctx, "campaign.step", headers)
+defer span.End()
+```
+
+For RabbitMQ that is `amqp.Table` in both directions; for SQS, message
+attributes. A message with no trace context is not an error — the consumer
+simply starts a trace of its own.
+
+## Databases
+
+These live in separate modules, so a service that wants logs alone does not pull
+a driver in with them.
+
+```sh
+go get github.com/unifers/signozkit/pgx
+go get github.com/unifers/signozkit/redis
+go get github.com/unifers/signozkit/mongo
+```
+
+```go
+// Postgres (pgx v5)
+cfg.ConnConfig.Tracer = signozpgx.Tracer()
+
+// Redis (go-redis v9)
+err := signozredis.Instrument(rdb)
+
+// MongoDB (driver v2 — upstream otelmongo covers v1 only)
+opts := options.Client().ApplyURI(uri).SetMonitor(signozmongo.Monitor())
+```
+
+Every query becomes a span under the request or job that ran it, provided the
+call is made with a context that carries the span — the `…Context` methods on
+pgx, the first argument on go-redis, and any Mongo call taking a `ctx`.
+
+Neither query parameters nor Mongo command documents are recorded: those are the
+values a statement ran against, which for most services means customer data.
+
 ## Shutdown
 
 Logs and spans are sent in batches (about every second). Call
@@ -90,6 +156,10 @@ lost from the container's own logs even if the collector is down.
 - **Services** → your service → an operation (e.g. `POST /orders`) → a trace →
   **Logs** shows that request's log lines.
 - **Logs Explorer** → filter `service.name = Orders`.
+
+A service with logs but no spans never appears on the **Services** page — that
+page is built from traces. If a service looks missing, check Logs Explorer
+before suspecting the pipeline.
 
 `/health` style endpoints are best left unwrapped: an uptime probe every few
 seconds would bury real requests on the Services page.
