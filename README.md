@@ -136,6 +136,10 @@ err := signozredis.Instrument(rdb)
 opts := options.Client().ApplyURI(uri).SetMonitor(signozmongo.Monitor())
 ```
 
+Query spans are named after the query. With sqlc that is the name in its header
+comment (`-- name: ContactsDue :many` becomes `ContactsDue`), because naming a
+span from the statement's first line would label every generated query `--`.
+
 Every query becomes a span under the request or job that ran it, provided the
 call is made with a context that carries the span — the `…Context` methods on
 pgx, the first argument on go-redis, and any Mongo call taking a `ctx`.
